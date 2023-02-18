@@ -23,6 +23,10 @@ import numpy as np
 
 from timm.utils import accuracy
 from timm.optim import create_optimizer
+import matplotlib.pyplot as plt
+from sklearn import manifold
+from glob import glob
+import nibabel as nib
 
 import utils
 
@@ -178,6 +182,7 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
 
     # create matrix to save end-of-task accuracies 
     acc_matrix = np.zeros((args.num_tasks, args.num_tasks))
+    
 
     for task_id in range(args.num_tasks):
        # Transfer previous learned prompt params to the new prompt
@@ -261,3 +266,13 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
         if args.output_dir and utils.is_main_process():
             with open(os.path.join(args.output_dir, '{}_stats.txt'.format(datetime.datetime.now().strftime('log_%Y_%m_%d_%H_%M'))), 'a') as f:
                 f.write(json.dumps(log_stats) + '\n')
+    print("start visualizing...")
+    prom = model.module.prompt.prompt.cpu().detach().numpy()
+    color = ['red', 'yellow', 'green', 'blue', 'black', 'brown', 'darkgreen', 'pink', 'indigo', 'maroon']
+    plt.figure(figsize=(8,8))
+    for i in range(len(prom)):
+        tsne = manifold.TSNE(n_components=2, init='pca', random_state=42, perplexity=4).fit_transform(prom[i])
+        plt.scatter(tsne[:,0],tsne[:,1],color=color[i],label=str(i))
+    plt.legend(loc='upper left')
+    plt.savefig('./prompt.jpg')
+    print("finished")
