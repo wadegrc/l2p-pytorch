@@ -2,5 +2,7 @@
 **/output/**
 checkpoints/
 local_datasets/
+cam/
+img/
 *.out
 *.err

@@ -16,9 +16,14 @@ import datetime
 import json
 from typing import Iterable
 from pathlib import Path
-
+from pytorch_grad_cam.utils.image import show_cam_on_image, \
+                                         deprocess_image, \
+                                         preprocess_image
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+from pytorch_grad_cam import GradCAM, HiResCAM, ScoreCAM, GradCAMPlusPlus, AblationCAM, XGradCAM, EigenCAM, FullGrad
+import cv2
 import torch
-
+from torchvision import transforms
 import numpy as np
 
 from timm.utils import accuracy
@@ -81,7 +86,10 @@ def train_one_epoch(model: torch.nn.Module, original_model: torch.nn.Module,
         loss.backward() 
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
         optimizer.step()
-
+        
+        #for name, params in model.module.prompt.named_parameters():
+            #print(params.requires_grad)
+            #print(params.grad)
         torch.cuda.synchronize()
         metric_logger.update(Loss=loss.item())
         metric_logger.update(Lr=optimizer.param_groups[0]["lr"])
@@ -93,8 +101,17 @@ def train_one_epoch(model: torch.nn.Module, original_model: torch.nn.Module,
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
+def reshape_transform(tensor, height=14, width=14):
+    result = tensor[:,41:,:].reshape(tensor.size(0), 
+        height, width, tensor.size(2))
+ 
+    # Bring the channels to the first dimension,
+    # like in CNNs.
+    result = result.transpose(2, 3).transpose(1, 2)
+    return result
 
-@torch.no_grad()
+
+#@torch.no_grad()
 def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loader, 
             device, task_id=-1, class_mask=None, args=None,):
     criterion = torch.nn.CrossEntropyLoss()
@@ -102,15 +119,36 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test: [Task {}]'.format(task_id + 1)
 
+    for name, params in model.module.blocks[-1].named_parameters():
+        params.requires_grad = True 
     # switch to evaluation mode
     model.eval()
     original_model.eval()
+    cam = AblationCAM(model=model, target_layers=[model.module.blocks[-1].norm1],use_cuda=True,reshape_transform=reshape_transform)
+    for input, target in metric_logger.log_every(data_loader, args.print_freq, header):
+        input = input.to(device, non_blocking=True)
+        target = target.to(device, non_blocking=True)
+        targets = []
+        cv2.imwrite(f'test.jpg',np.uint8(255*input[0].cpu().numpy()).reshape(224,224,3))
+        for i in range(target.shape[0]):
+            targets.append(ClassifierOutputTarget(target[i]))
+        result = cam(input_tensor=input,
+                        targets = targets, 
+                        eigen_smooth=True,
+                        aug_smooth=True)
+        for i in range(input.shape[0]):
+            #pic = transforms.ToPILImage(input[i])
+            res = show_cam_on_image(input[i].cpu().numpy().reshape(224,224,3), result[i], use_rgb=True)
+            cv2.imwrite(f'./cam/task_{task_id}/image_{i}.jpg',res)
+        print('finished')
+        break
 
+    for name, params in model.module.blocks[-1].named_parameters():
+        params.requires_grad = False 
     with torch.no_grad():
         for input, target in metric_logger.log_every(data_loader, args.print_freq, header):
             input = input.to(device, non_blocking=True)
             target = target.to(device, non_blocking=True)
-
             # compute output
 
             if original_model is not None:
@@ -146,7 +184,7 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
-@torch.no_grad()
+#@torch.no_grad()
 def evaluate_till_now(model: torch.nn.Module, original_model: torch.nn.Module, data_loader, 
                     device, task_id=-1, class_mask=None, acc_matrix=None, args=None,):
     stat_matrix = np.zeros((3, args.num_tasks)) # 3 for Acc@1, Acc@5, Loss

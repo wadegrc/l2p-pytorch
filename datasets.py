@@ -16,8 +16,9 @@ from torchvision import datasets, transforms
 from timm.data import create_transform
 
 from continual_datasets.continual_datasets import *
-
+import numpy as np
 import utils
+import cv2
 
 class Lambda(transforms.Lambda):
     def __init__(self, lambd, nb_classes):
@@ -39,7 +40,6 @@ def build_continual_dataloader(args):
 
     if args.dataset.startswith('Split-'):
         dataset_train, dataset_val = get_dataset(args.dataset.replace('Split-',''), transform_train, transform_val, args)
-
         args.nb_classes = len(dataset_val.classes)
 
         splited_dataset, class_mask = split_single_dataset(dataset_train, dataset_val, args)
@@ -55,6 +55,7 @@ def build_continual_dataloader(args):
     
         args.nb_classes = 0
 
+    
     for i in range(args.num_tasks):
         if args.dataset.startswith('Split-'):
             dataset_train, dataset_val = splited_dataset[i]
@@ -90,6 +91,7 @@ def build_continual_dataloader(args):
             num_workers=args.num_workers,
             pin_memory=args.pin_mem,
         )
+
 
         data_loader_val = torch.utils.data.DataLoader(
             dataset_val, sampler=sampler_val,
