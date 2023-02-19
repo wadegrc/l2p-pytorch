@@ -665,8 +665,10 @@ def resize_pos_embed(posemb, posemb_new, num_prefix_tokens=1, gs_new=()):
     else:
         posemb_prefix, posemb_grid = posemb[:, :0], posemb[0]
     gs_old = int(math.sqrt(len(posemb_grid)))
-    if ntok_new > gs_old ** 2:
-        ntok_new -= gs_old ** 2
+    #if ntok_new > gs_old ** 2:
+    if ntok_new == 237:
+        #ntok_new -= gs_old ** 2
+        ntok_new -= 14 ** 2
         # expand cls's pos embedding for prompt tokens
         posemb_prefix = posemb_prefix.expand(-1, ntok_new, -1)
     if not len(gs_new):  # backwards compatibility
@@ -716,13 +718,13 @@ def _create_vision_transformer(variant, pretrained=False, **kwargs):
         raise RuntimeError('features_only not implemented for Vision Transformer models.')
 
     pretrained_cfg = resolve_pretrained_cfg(variant, pretrained_cfg=kwargs.pop('pretrained_cfg', None))
-    #pretrained_cfg.pop("url")
-    #pretrained_cfg["file"] = "./checkpotins/my_model.pth"
+    pretrained_cfg.pop("url")
+    pretrained_cfg["file"] = "./checkpoints/my_model.pth"
     model = build_model_with_cfg(
         VisionTransformer, variant, pretrained,
         pretrained_cfg=pretrained_cfg,
         pretrained_filter_fn=checkpoint_filter_fn,
-        pretrained_custom_load='npz' in pretrained_cfg['url'],
+        #pretrained_custom_load='npz' in pretrained_cfg['url'],
         **kwargs)
     return model
 
